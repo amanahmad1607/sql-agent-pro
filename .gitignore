@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment — NEVER commit real secrets
+.env
+
+# ChromaDB (vector store data — regenerate with `python cli.py index-schema`)
+chroma_db/
+
+# Streamlit
+.streamlit/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Exports / outputs
+*.csv
+schema_export.json
+result.json

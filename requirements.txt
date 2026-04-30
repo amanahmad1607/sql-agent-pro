@@ -1,0 +1,50 @@
+# =============================================================
+# SQL Agent Pro — Python Dependencies
+# Python 3.11+ required
+# Install: pip install -r requirements.txt
+# =============================================================
+
+# ── LangChain ecosystem ───────────────────────────────────────
+langgraph>=0.2.0                # State machine / agentic orchestration
+langchain>=0.3.0                # Core abstractions
+langchain-core>=0.3.0           # Messages, tools, runnables
+langchain-groq>=0.2.0           # Groq provider  ← default LLM
+langchain-openai>=0.2.0         # OpenAI provider (optional)
+langchain-anthropic>=0.2.0      # Anthropic provider (optional)
+langchain-community>=0.3.0      # Community integrations
+
+# ── Observability ─────────────────────────────────────────────
+langsmith>=0.1.0                # Query tracing (set LANGCHAIN_TRACING_V2=true)
+
+# ── Database ──────────────────────────────────────────────────
+sqlalchemy>=2.0.0               # ORM + QueuePool connection pooling
+psycopg2-binary>=2.9.9          # PostgreSQL DBAPI driver
+
+# Optional drivers — uncomment what you need:
+# pymysql>=1.1.0                # MySQL / MariaDB
+# pyodbc>=5.0.0                 # MS SQL Server
+
+# ── Vector Store & Embeddings ─────────────────────────────────
+chromadb>=0.5.0                 # Persistent vector store for schema indexing
+sentence-transformers>=3.0.0    # all-MiniLM-L6-v2 local embedding model
+
+# ── Security ──────────────────────────────────────────────────
+sqlglot>=23.0.0                 # SQL AST parser — blocks mutations at parse level
+presidio-analyzer>=2.2.0        # PII detection  (set ENABLE_PII_MASKING=true)
+presidio-anonymizer>=2.2.0      # PII masking    (set ENABLE_PII_MASKING=true)
+
+# ── UI ────────────────────────────────────────────────────────
+streamlit>=1.38.0               # Web application framework
+plotly>=5.24.0                  # Interactive charts
+pandas>=2.2.0                   # DataFrames, CSV/JSON export
+
+# ── Utilities ─────────────────────────────────────────────────
+python-dotenv>=1.0.0            # .env file loading
+pydantic>=2.8.0                 # Data validation and settings
+tenacity>=9.0.0                 # Retry with exponential backoff
+structlog>=24.0.0               # Structured JSON / console logging
+
+# ── Testing ───────────────────────────────────────────────────
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+pytest-mock>=3.14.0
