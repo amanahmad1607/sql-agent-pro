@@ -25,6 +25,7 @@ psycopg2-binary>=2.9.9          # PostgreSQL DBAPI driver
 # pyodbc>=5.0.0                 # MS SQL Server
 
 # ── Vector Store & Embeddings ─────────────────────────────────
+numpy<2.0.0 
 chromadb==0.4.24                 # Persistent vector store for schema indexing
 sentence-transformers==2.7.0    # all-MiniLM-L6-v2 local embedding model
 
