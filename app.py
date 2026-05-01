@@ -320,7 +320,9 @@ def try_build_schema():
     if not st.session_state.schema_built:
         try:
             from db.schema_vector import build_schema_index
-            build_schema_index(schema=os.getenv("DB_SCHEMA", "public"))
+            # Always force_rebuild on cloud — EphemeralClient loses data on cold start
+            is_cloud = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db").startswith("/tmp")
+            build_schema_index(schema=os.getenv("DB_SCHEMA", "public"), force_rebuild=is_cloud)
             st.session_state.schema_built = True
         except Exception:
             pass
