@@ -1,8 +1,10 @@
 """
 db/schema_vector.py
 Semantic Schema Management — introspects PostgreSQL and indexes
-table/column descriptions into ChromaDB so the agent retrieves
-only the 3–5 most relevant tables per query (prevents context bloat).
+table/column descriptions into ChromaDB.
+
+Cloud-safe: handles missing tenant, empty /tmp, and cold-start
+scenarios on Streamlit Cloud, Railway, and Render.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import json
 
 import chromadb
 import structlog
+from chromadb.config import Settings
 from chromadb.utils import embedding_functions
 from sqlalchemy import inspect
 
@@ -24,8 +27,36 @@ _EMBED_MODEL = "all-MiniLM-L6-v2"
 
 
 def _get_chroma_client() -> chromadb.Client:
+    """
+    Create a ChromaDB client that works on both local and cloud environments.
+    Uses EphemeralClient on cloud (when /tmp is the persist dir) as a fallback
+    if PersistentClient fails due to missing tenant.
+    """
     persist_dir = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-    return chromadb.PersistentClient(path=persist_dir)
+
+    # Ensure directory exists
+    os.makedirs(persist_dir, exist_ok=True)
+
+    try:
+        client = chromadb.PersistentClient(
+            path=persist_dir,
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True,
+            ),
+        )
+        # Verify tenant is accessible by doing a lightweight operation
+        client.heartbeat()
+        return client
+
+    except Exception as e:
+        log.warning("chroma.persistent_failed", error=str(e),
+                    fallback="EphemeralClient")
+        # Fallback to in-memory client — works on any cloud environment
+        # Schema will be rebuilt on each cold start (takes ~15s)
+        return chromadb.EphemeralClient(
+            settings=Settings(anonymized_telemetry=False)
+        )
 
 
 def _get_collection(client: chromadb.Client) -> chromadb.Collection:
@@ -46,7 +77,7 @@ def _introspect_schema(schema: str = "public") -> list[dict]:
 
     for table_name in inspector.get_table_names(schema=schema):
         columns = inspector.get_columns(table_name, schema=schema)
-        pk = inspector.get_pk_constraint(table_name, schema=schema)
+        pk  = inspector.get_pk_constraint(table_name, schema=schema)
         fks = inspector.get_foreign_keys(table_name, schema=schema)
 
         col_lines = [
@@ -54,25 +85,27 @@ def _introspect_schema(schema: str = "public") -> list[dict]:
             for c in columns
         ]
         fk_notes = [
-            f"{fk['constrained_columns']} → {fk['referred_table']}.{fk['referred_columns']}"
+            f"{fk['constrained_columns']} → "
+            f"{fk['referred_table']}.{fk['referred_columns']}"
             for fk in fks
         ]
 
         description = (
             f"Table '{schema}.{table_name}' stores: "
-            + ", ".join(c["name"] for c in columns)
-            + ". "
+            + ", ".join(c["name"] for c in columns) + ". "
             + (f"PK: {pk.get('constrained_columns', [])}. " if pk else "")
             + ("FK: " + "; ".join(fk_notes) + "." if fk_notes else "")
         )
 
         tables.append({
             "table_name": table_name,
-            "schema": schema,
+            "schema":     schema,
             "description": description,
-            "ddl": f"CREATE TABLE {schema}.{table_name} (\n"
-                   + ",\n".join(col_lines) + "\n);",
-            "columns": [c["name"] for c in columns],
+            "ddl": (
+                f"CREATE TABLE {schema}.{table_name} (\n"
+                + ",\n".join(col_lines) + "\n);"
+            ),
+            "columns":  [c["name"] for c in columns],
             "fk_notes": fk_notes,
         })
 
@@ -81,9 +114,10 @@ def _introspect_schema(schema: str = "public") -> list[dict]:
 
 
 def build_schema_index(schema: str = "public", force_rebuild: bool = False) -> int:
-    client = _get_chroma_client()
+    client     = _get_chroma_client()
     collection = _get_collection(client)
-    tables = _introspect_schema(schema)
+    tables     = _introspect_schema(schema)
+
     documents, metadatas, ids = [], [], []
 
     for t in tables:
@@ -93,7 +127,8 @@ def build_schema_index(schema: str = "public", force_rebuild: bool = False) -> i
         if not force_rebuild:
             try:
                 existing = collection.get(ids=[doc_id], include=["metadatas"])
-                if existing["metadatas"] and existing["metadatas"][0].get("hash") == content_hash:
+                if (existing["metadatas"]
+                        and existing["metadatas"][0].get("hash") == content_hash):
                     continue
             except Exception:
                 pass
@@ -101,11 +136,11 @@ def build_schema_index(schema: str = "public", force_rebuild: bool = False) -> i
         documents.append(t["description"])
         metadatas.append({
             "table_name": t["table_name"],
-            "schema": t["schema"],
-            "ddl": t["ddl"],
-            "columns": json.dumps(t["columns"]),
-            "fk_notes": json.dumps(t["fk_notes"]),
-            "hash": content_hash,
+            "schema":     t["schema"],
+            "ddl":        t["ddl"],
+            "columns":    json.dumps(t["columns"]),
+            "fk_notes":   json.dumps(t["fk_notes"]),
+            "hash":       content_hash,
         })
         ids.append(doc_id)
 
@@ -117,11 +152,18 @@ def build_schema_index(schema: str = "public", force_rebuild: bool = False) -> i
 
 
 def retrieve_relevant_schema(query: str, top_k: int = 5) -> list[dict]:
-    client = _get_chroma_client()
+    client     = _get_chroma_client()
     collection = _get_collection(client)
-    count = collection.count()
+    count      = collection.count()
+
     if count == 0:
-        return []
+        # Collection is empty — trigger a rebuild automatically
+        log.warning("schema.collection_empty — auto rebuilding")
+        schema = os.getenv("DB_SCHEMA", "public")
+        build_schema_index(schema=schema, force_rebuild=True)
+        count = collection.count()
+        if count == 0:
+            return []
 
     results = collection.query(
         query_texts=[query],
@@ -132,13 +174,13 @@ def retrieve_relevant_schema(query: str, top_k: int = 5) -> list[dict]:
     schemas = []
     for i, meta in enumerate(results["metadatas"][0]):
         schemas.append({
-            "table_name": meta["table_name"],
-            "schema": meta["schema"],
-            "ddl": meta["ddl"],
-            "columns": json.loads(meta["columns"]),
-            "fk_notes": json.loads(meta["fk_notes"]),
+            "table_name":      meta["table_name"],
+            "schema":          meta["schema"],
+            "ddl":             meta["ddl"],
+            "columns":         json.loads(meta["columns"]),
+            "fk_notes":        json.loads(meta["fk_notes"]),
             "relevance_score": round(1 - results["distances"][0][i], 3),
-            "description": results["documents"][0][i],
+            "description":     results["documents"][0][i],
         })
 
     log.info("schema.retrieved", count=len(schemas))
