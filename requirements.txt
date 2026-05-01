@@ -25,8 +25,8 @@ psycopg2-binary>=2.9.9          # PostgreSQL DBAPI driver
 # pyodbc>=5.0.0                 # MS SQL Server
 
 # ── Vector Store & Embeddings ─────────────────────────────────
-chromadb>=0.5.0                 # Persistent vector store for schema indexing
-sentence-transformers>=3.0.0    # all-MiniLM-L6-v2 local embedding model
+chromadb==0.4.24                 # Persistent vector store for schema indexing
+sentence-transformers==2.7.0    # all-MiniLM-L6-v2 local embedding model
 
 # ── Security ──────────────────────────────────────────────────
 sqlglot>=23.0.0                 # SQL AST parser — blocks mutations at parse level
